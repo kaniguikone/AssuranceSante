@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "baseUrl": "./",
+    "strictPropertyInitialization": false,
+    "paths": {
+      "@sante-ci/types": ["../../libs/types/src/index.ts"],
+      "@sante-ci/utils": ["../../libs/utils/src/index.ts"],
+      "@sante-ci/constants": ["../../libs/constants/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

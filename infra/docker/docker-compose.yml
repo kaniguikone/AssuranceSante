@@ -1,0 +1,583 @@
+# =============================================================================
+# SANTÉ-CI — Infrastructure locale de développement
+# Usage: pnpm infra:up
+# =============================================================================
+
+name: sante-ci
+
+networks:
+  sante-ci-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  kafka_data:
+  zookeeper_data:
+  minio_data:
+  keycloak_data:
+  elasticsearch_data:
+  clickhouse_data:
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: sante-ci-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sante_ci}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sante_ci_dev}
+      POSTGRES_DB: sante_ci_master
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts/postgres-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sante_ci}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis Cluster (mode standalone pour dev) ───────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: sante-ci-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-sante_ci_dev} --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-sante_ci_dev}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Zookeeper (requis par Kafka) ────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: sante-ci-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    networks:
+      - sante-ci-network
+
+  # ── Apache Kafka ────────────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: sante-ci-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_LOG_RETENTION_HOURS: 168
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ── Kafka UI (interface web) ────────────────────────────────────────────────
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: sante-ci-kafka-ui
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: sante-ci-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    networks:
+      - sante-ci-network
+
+  # ── MinIO (stockage objets compatible S3) ───────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: sante-ci-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minio_secret_dev}
+    volumes:
+      - minio_data:/data
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Keycloak (IAM, OAuth2, OIDC) — DÉSACTIVÉ Phase 1 (quay.io instable sur Windows) ──
+  # Pour activer : décommenter ce bloc et relancer pnpm infra:up
+  # keycloak:
+  #   image: quay.io/keycloak/keycloak:24.0
+  #   container_name: sante-ci-keycloak
+  #   restart: unless-stopped
+  #   command: start-dev --import-realm
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   ports:
+  #     - "8080:8080"
+  #   environment:
+  #     KC_DB: postgres
+  #     KC_DB_URL: jdbc:postgresql://postgres:5432/sante_keycloak
+  #     KC_DB_USERNAME: ${POSTGRES_USER:-sante_ci}
+  #     KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-sante_ci_dev}
+  #     KC_HOSTNAME: localhost
+  #     KC_HOSTNAME_PORT: 8080
+  #     KC_HOSTNAME_STRICT_HTTPS: false
+  #     KC_HTTP_ENABLED: true
+  #     KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+  #     KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin_dev}
+  #     KC_IMPORT_REALM_DIR: /opt/keycloak/data/import
+  #   volumes:
+  #     - keycloak_data:/opt/keycloak/data
+  #     - ./keycloak/realm-sante-ci.json:/opt/keycloak/data/import/realm-sante-ci.json:ro
+  #   networks:
+  #     - sante-ci-network
+
+  # ── Elasticsearch (recherche fulltext) ─────────────────────────────────────
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: sante-ci-elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      xpack.security.enabled: false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ── ClickHouse (analytics) ──────────────────────────────────────────────────
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: sante-ci-clickhouse
+    restart: unless-stopped
+    ports:
+      - "8123:8123"
+      - "9009:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    networks:
+      - sante-ci-network
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 262144
+        hard: 262144
+
+  # ── Mailhog (catch-all email en développement) ─────────────────────────────
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: sante-ci-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"  # SMTP
+      - "8025:8025"  # Interface web
+    networks:
+      - sante-ci-network
+
+  # ── Adminer (interface base de données) ────────────────────────────────────
+  adminer:
+    image: adminer:latest
+    container_name: sante-ci-adminer
+    restart: unless-stopped
+    ports:
+      - "8888:8080"
+    networks:
+      - sante-ci-network
+    depends_on:
+      - postgres
+
+  # ==========================================================================
+  # SERVICES APPLICATIFS (profil "app")
+  # Démarrer avec : docker compose --profile app up -d
+  # ==========================================================================
+
+  # ── Kong API Gateway ────────────────────────────────────────────────────────
+  kong:
+    image: kong:3.7-ubuntu
+    container_name: sante-ci-kong
+    restart: unless-stopped
+    profiles: [app]
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/declarative/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000"
+    ports:
+      - "8000:8000"   # Proxy HTTP (entrée principale)
+      - "8001:8001"   # Admin API (dev uniquement)
+    volumes:
+      - ./kong/kong.yml:/kong/declarative/kong.yml:ro
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ── Auth Service (:3001) ────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_NAME: auth-service
+        SERVICE_PORT: 3001
+    image: sante-ci/auth-service:dev
+    container_name: sante-ci-auth
+    restart: unless-stopped
+    profiles: [app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-sante_ci}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-sante_ci_dev}
+      DB_NAME: sante_auth
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-sante_ci_dev}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production_min_64_chars}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  # ── Contract Service (:3002) ────────────────────────────────────────────────
+  contract-service:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_NAME: contract-service
+        SERVICE_PORT: 3002
+    image: sante-ci/contract-service:dev
+    container_name: sante-ci-contract
+    restart: unless-stopped
+    profiles: [app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "3002:3002"
+    environment:
+      NODE_ENV: development
+      PORT: 3002
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-sante_ci}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-sante_ci_dev}
+      DB_NAME: sante_contract
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production_min_64_chars}
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  # ── Member Service (:3003) ──────────────────────────────────────────────────
+  member-service:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_NAME: member-service
+        SERVICE_PORT: 3003
+    image: sante-ci/member-service:dev
+    container_name: sante-ci-member
+    restart: unless-stopped
+    profiles: [app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3003:3003"
+    environment:
+      NODE_ENV: development
+      PORT: 3003
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-sante_ci}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-sante_ci_dev}
+      DB_NAME: sante_member
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-sante_ci_dev}
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production_min_64_chars}
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  # ── Claim Service (:3005) ───────────────────────────────────────────────────
+  claim-service:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_NAME: claim-service
+        SERVICE_PORT: 3005
+    image: sante-ci/claim-service:dev
+    container_name: sante-ci-claim
+    restart: unless-stopped
+    profiles: [app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "3005:3005"
+    environment:
+      NODE_ENV: development
+      PORT: 3005
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-sante_ci}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-sante_ci_dev}
+      DB_NAME: sante_claim
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production_min_64_chars}
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3005/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  # ── Billing Service (:3006) ─────────────────────────────────────────────────
+  billing-service:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_NAME: billing-service
+        SERVICE_PORT: 3006
+    image: sante-ci/billing-service:dev
+    container_name: sante-ci-billing
+    restart: unless-stopped
+    profiles: [app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "3006:3006"
+    environment:
+      NODE_ENV: development
+      PORT: 3006
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-sante_ci}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-sante_ci_dev}
+      DB_NAME: sante_billing
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production_min_64_chars}
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3006/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  # ── Payment Service (:3007) ─────────────────────────────────────────────────
+  payment-service:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_NAME: payment-service
+        SERVICE_PORT: 3007
+    image: sante-ci/payment-service:dev
+    container_name: sante-ci-payment
+    restart: unless-stopped
+    profiles: [app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3007:3007"
+    environment:
+      NODE_ENV: development
+      PORT: 3007
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-sante_ci}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-sante_ci_dev}
+      DB_NAME: sante_payment
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-sante_ci_dev}
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production_min_64_chars}
+      ORANGE_MONEY_BASE_URL: ${ORANGE_MONEY_BASE_URL:-}
+      ORANGE_MONEY_MERCHANT_KEY: ${ORANGE_MONEY_MERCHANT_KEY:-}
+      ORANGE_MONEY_CLIENT_ID: ${ORANGE_MONEY_CLIENT_ID:-}
+      ORANGE_MONEY_CLIENT_SECRET: ${ORANGE_MONEY_CLIENT_SECRET:-}
+      MTN_MOMO_BASE_URL: ${MTN_MOMO_BASE_URL:-https://sandbox.momodeveloper.mtn.com}
+      MTN_MOMO_SUBSCRIPTION_KEY: ${MTN_MOMO_SUBSCRIPTION_KEY:-}
+      WAVE_BASE_URL: ${WAVE_BASE_URL:-https://api.wave.com/v1}
+      WAVE_API_KEY: ${WAVE_API_KEY:-}
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3007/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  # ── Notification Service (:3008) ────────────────────────────────────────────
+  notification-service:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.nestjs
+      args:
+        SERVICE_NAME: notification-service
+        SERVICE_PORT: 3008
+    image: sante-ci/notification-service:dev
+    container_name: sante-ci-notification
+    restart: unless-stopped
+    profiles: [app]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    ports:
+      - "3008:3008"
+    environment:
+      NODE_ENV: development
+      PORT: 3008
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-sante_ci}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-sante_ci_dev}
+      DB_NAME: sante_notification
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: ${JWT_SECRET:-dev_jwt_secret_change_in_production_min_64_chars}
+      INFOBIP_BASE_URL: ${INFOBIP_BASE_URL:-}
+      INFOBIP_API_KEY: ${INFOBIP_API_KEY:-}
+      SMS_SENDER_ID: ${SMS_SENDER_ID:-SANTECI}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@sante-ci.ci}
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3008/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+
+  # ── Web App React (:80) ─────────────────────────────────────────────────────
+  web-app:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+      args:
+        VITE_API_URL: http://localhost:8000
+        VITE_APP_NAME: SANTÉ-CI
+    image: sante-ci/web-app:dev
+    container_name: sante-ci-web
+    restart: unless-stopped
+    profiles: [app]
+    depends_on:
+      - kong
+    ports:
+      - "3000:80"
+    networks:
+      - sante-ci-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

@@ -1,0 +1,60 @@
+# Dépendances
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Turborepo
+.turbo/
+
+# Environnement (NE JAMAIS COMMITTER)
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Tests
+coverage/
+.nyc_output/
+
+# Docker volumes locaux
+infra/docker/volumes/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Java
+target/
+*.class
+*.jar
+
+# Uploads temporaires
+uploads/
+tmp/

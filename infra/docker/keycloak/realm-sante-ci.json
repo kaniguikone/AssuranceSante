@@ -1,0 +1,81 @@
+{
+  "realm": "sante-ci",
+  "displayName": "SANTÉ-CI",
+  "displayNameHtml": "<b>SANTÉ-CI</b> — Assurance Maladie",
+  "enabled": true,
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 5,
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 3600,
+  "refreshTokenMaxReuse": 0,
+  "ssoSessionMaxLifespan": 36000,
+  "roles": {
+    "realm": [
+      { "name": "SUPER_ADMIN", "description": "Administrateur système complet" },
+      { "name": "ADMIN", "description": "Administrateur métier" },
+      { "name": "COMMERCIAL", "description": "Agent commercial / souscription" },
+      { "name": "GESTIONNAIRE_CONTRATS", "description": "Gestion du portefeuille contrats" },
+      { "name": "GESTIONNAIRE_SINISTRES", "description": "Traitement des dossiers sinistres" },
+      { "name": "MEDECIN_CONSEIL", "description": "Validation médicale sinistres lourds" },
+      { "name": "LIQUIDATEUR", "description": "Calcul et validation remboursements" },
+      { "name": "COMPTABLE", "description": "Suivi comptable et rapprochements" },
+      { "name": "CAISSIER", "description": "Encaissements en agence" },
+      { "name": "AGENT_FRAUDE", "description": "Investigation fraudes et alertes" },
+      { "name": "AUDITEUR", "description": "Audit read-only toutes données" },
+      { "name": "PRESTATAIRE", "description": "Accès portail prestataire de soins" },
+      { "name": "EMPLOYEUR", "description": "Gestion contrats collectifs entreprise" },
+      { "name": "ASSURE", "description": "Assuré principal" },
+      { "name": "BENEFICIAIRE", "description": "Bénéficiaire (ayant droit)" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "sante-ci-api",
+      "name": "SANTÉ-CI API Backend",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "sante-ci-api-secret-dev",
+      "bearerOnly": true,
+      "publicClient": false,
+      "protocol": "openid-connect"
+    },
+    {
+      "clientId": "sante-ci-web",
+      "name": "SANTÉ-CI Web App",
+      "enabled": true,
+      "publicClient": true,
+      "redirectUris": ["http://localhost:3000/*", "https://app.sante-ci.ci/*"],
+      "webOrigins": ["http://localhost:3000", "https://app.sante-ci.ci"],
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false
+    },
+    {
+      "clientId": "sante-ci-mobile",
+      "name": "SANTÉ-CI Mobile App",
+      "enabled": true,
+      "publicClient": true,
+      "redirectUris": ["sante-ci://auth/*"],
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true
+    }
+  ],
+  "passwordPolicy": "length(8) and upperCase(1) and lowerCase(1) and digits(1) and specialChars(1) and notUsername(undefined)",
+  "otpPolicyType": "totp",
+  "otpPolicyAlgorithm": "HmacSHA1",
+  "otpPolicyInitialCounter": 0,
+  "otpPolicyDigits": 6,
+  "otpPolicyLookAheadWindow": 1,
+  "otpPolicyPeriod": 30
+}

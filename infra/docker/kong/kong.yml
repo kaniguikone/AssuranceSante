@@ -1,0 +1,201 @@
+# =============================================================================
+# SANTÉ-CI — Kong Gateway (DB-less, mode déclaratif)
+# Version : Kong 3.7
+# Tous les services internes sont accessibles via http://kong:8000
+# =============================================================================
+
+_format_version: "3.0"
+_transform: true
+
+# ── Services upstream ─────────────────────────────────────────────────────────
+services:
+
+  # Auth Service
+  - name: auth-service
+    url: http://auth-service:3001
+    connect_timeout: 10000
+    read_timeout: 30000
+    write_timeout: 30000
+    routes:
+      - name: auth-login
+        paths: ["/auth/login", "/auth/refresh", "/auth/logout", "/auth/forgot-password", "/auth/reset-password"]
+        methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        strip_path: false
+      - name: auth-api
+        paths: ["/auth"]
+        methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 30
+          hour: 300
+          policy: local
+          error_message: "Trop de tentatives de connexion. Réessayez dans quelques minutes."
+
+  # Contract Service
+  - name: contract-service
+    url: http://contract-service:3002
+    connect_timeout: 10000
+    read_timeout: 60000
+    write_timeout: 30000
+    routes:
+      - name: contracts-api
+        paths: ["/contracts"]
+        methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          secret_is_base64: false
+          claims_to_verify: [exp]
+          key_claim_name: kid
+          cookie_names: []
+
+  # Member Service
+  - name: member-service
+    url: http://member-service:3003
+    connect_timeout: 10000
+    read_timeout: 30000
+    write_timeout: 30000
+    routes:
+      - name: members-api
+        paths: ["/members"]
+        methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          secret_is_base64: false
+          claims_to_verify: [exp]
+          key_claim_name: kid
+          cookie_names: []
+
+  # Billing Service
+  - name: billing-service
+    url: http://billing-service:3006
+    connect_timeout: 10000
+    read_timeout: 60000
+    write_timeout: 30000
+    routes:
+      - name: billing-api
+        paths: ["/billing"]
+        methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          secret_is_base64: false
+          claims_to_verify: [exp]
+          key_claim_name: kid
+          cookie_names: []
+
+  # Payment Service
+  - name: payment-service
+    url: http://payment-service:3007
+    connect_timeout: 10000
+    read_timeout: 60000
+    write_timeout: 60000
+    routes:
+      - name: payments-api
+        paths: ["/payments"]
+        methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        strip_path: false
+      - name: payments-webhooks
+        paths: ["/webhooks/payments"]
+        methods: [POST, OPTIONS]
+        strip_path: false
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 60
+          policy: local
+
+  # Claim Service
+  - name: claim-service
+    url: http://claim-service:3005
+    connect_timeout: 10000
+    read_timeout: 60000
+    write_timeout: 30000
+    routes:
+      - name: claims-api
+        paths: ["/claims"]
+        methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          secret_is_base64: false
+          claims_to_verify: [exp]
+          key_claim_name: kid
+          cookie_names: []
+
+  # Notification Service
+  - name: notification-service
+    url: http://notification-service:3008
+    connect_timeout: 10000
+    read_timeout: 30000
+    write_timeout: 30000
+    routes:
+      - name: notifications-api
+        paths: ["/notifications"]
+        methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        strip_path: false
+    plugins:
+      - name: jwt
+        config:
+          secret_is_base64: false
+          claims_to_verify: [exp]
+          key_claim_name: kid
+          cookie_names: []
+
+# ── Plugins globaux ───────────────────────────────────────────────────────────
+plugins:
+
+  # CORS — autorisé pour le frontend React en dev
+  - name: cors
+    config:
+      origins:
+        - "http://localhost:3000"
+        - "http://localhost:80"
+        - "http://web-app:80"
+      methods: [GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS]
+      headers:
+        - Accept
+        - Accept-Version
+        - Content-Length
+        - Content-MD5
+        - Content-Type
+        - Date
+        - Authorization
+        - X-Auth-Token
+        - X-Request-ID
+      exposed_headers:
+        - X-Auth-Token
+        - X-Request-ID
+      credentials: true
+      max_age: 3600
+
+  # Limit taille des requêtes (10 MB pour les documents)
+  - name: request-size-limiting
+    config:
+      allowed_payload_size: 10
+      size_unit: megabytes
+
+  # En-têtes de sécurité
+  - name: response-transformer
+    config:
+      add:
+        headers:
+          - "X-Frame-Options: DENY"
+          - "X-Content-Type-Options: nosniff"
+          - "X-XSS-Protection: 1; mode=block"
+          - "Referrer-Policy: strict-origin-when-cross-origin"
+
+  # Rate limiting global (par défaut)
+  - name: rate-limiting
+    config:
+      minute: 200
+      hour: 5000
+      policy: local
+      hide_client_headers: false

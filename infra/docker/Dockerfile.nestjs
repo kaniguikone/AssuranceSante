@@ -1,0 +1,80 @@
+# =============================================================================
+# SANTÉ-CI — Dockerfile NestJS multi-stage (monorepo pnpm + Turborepo)
+# Usage (depuis la racine du monorepo) :
+#   docker build -f infra/docker/Dockerfile.nestjs \
+#     --build-arg SERVICE_NAME=auth-service \
+#     --build-arg SERVICE_PORT=3001 \
+#     -t sante-ci/auth-service:latest .
+# =============================================================================
+
+ARG NODE_VERSION=20-alpine
+ARG SERVICE_NAME
+ARG SERVICE_PORT=3000
+
+# ── Stage 1 : Dépendances ────────────────────────────────────────────────────
+FROM node:${NODE_VERSION} AS deps
+ARG SERVICE_NAME
+
+RUN corepack enable && corepack prepare pnpm@9.1.0 --activate
+WORKDIR /app
+
+# Manifestes workspace (nécessaires pour pnpm install en mode filtre)
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json turbo.json tsconfig.base.json ./
+
+# package.json des libs partagées
+COPY libs/types/package.json      ./libs/types/
+COPY libs/dtos/package.json       ./libs/dtos/
+COPY libs/utils/package.json      ./libs/utils/
+COPY libs/constants/package.json  ./libs/constants/
+
+# package.json du service cible
+COPY apps/${SERVICE_NAME}/package.json ./apps/${SERVICE_NAME}/
+
+# Installation des dépendances du service et de ses dépendances workspace
+RUN pnpm install --frozen-lockfile --filter @sante-ci/${SERVICE_NAME}...
+
+# ── Stage 2 : Build ──────────────────────────────────────────────────────────
+FROM node:${NODE_VERSION} AS builder
+ARG SERVICE_NAME
+
+RUN corepack enable && corepack prepare pnpm@9.1.0 --activate
+WORKDIR /app
+
+# Récupérer node_modules installés
+COPY --from=deps /app/node_modules          ./node_modules
+COPY --from=deps /app/pnpm-workspace.yaml   ./pnpm-workspace.yaml
+
+# Copier le code source
+COPY tsconfig.base.json turbo.json ./
+COPY libs/   ./libs/
+COPY apps/${SERVICE_NAME}/  ./apps/${SERVICE_NAME}/
+
+# Construire les libs puis le service via Turborepo
+RUN pnpm --filter @sante-ci/${SERVICE_NAME}... build
+
+# ── Stage 3 : Runtime production ─────────────────────────────────────────────
+FROM node:${NODE_VERSION} AS runner
+ARG SERVICE_NAME
+ARG SERVICE_PORT
+ENV NODE_ENV=production
+ENV PORT=${SERVICE_PORT}
+
+WORKDIR /app
+
+# Utilisateur non-root
+RUN addgroup --system --gid 1001 nodejs \
+ && adduser  --system --uid 1001 nestjs
+
+# Copier uniquement le dist compilé et les dépendances de production
+COPY --from=builder --chown=nestjs:nodejs /app/apps/${SERVICE_NAME}/dist       ./dist
+COPY --from=builder --chown=nestjs:nodejs /app/apps/${SERVICE_NAME}/package.json ./package.json
+COPY --from=builder --chown=nestjs:nodejs /app/node_modules                    ./node_modules
+
+USER nestjs
+
+EXPOSE ${SERVICE_PORT}
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD wget -qO- http://localhost:${SERVICE_PORT}/health || exit 1
+
+CMD ["node", "dist/main"]

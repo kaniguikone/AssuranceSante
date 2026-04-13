@@ -1,0 +1,48 @@
+# =============================================================================
+# SANTÉ-CI — .dockerignore
+# =============================================================================
+
+# Dépendances (réinstallées dans le container)
+**/node_modules
+**/.pnpm-store
+
+# Builds locaux
+**/dist
+**/build
+**/.next
+**/coverage
+
+# Fichiers sensibles
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+**/.gitkeep
+
+# IDE / OS
+.vscode
+.idea
+**/.DS_Store
+**/Thumbs.db
+
+# Logs
+**/*.log
+**/logs
+
+# Tests
+**/__tests__
+**/*.test.ts
+**/*.spec.ts
+**/*.e2e-spec.ts
+**/jest.config.*
+
+# Docs
+**/*.md
+!README.md
+
+# Infra / K8s (pas nécessaire dans les images app)
+infra/k8s
+infra/terraform
