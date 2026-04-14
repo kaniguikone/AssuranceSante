@@ -1,5 +1,5 @@
 import {
-  IsString, IsEnum, IsOptional, IsBoolean, IsEmail,
+  IsString, IsEnum, IsOptional, IsBoolean, IsEmail, IsArray, IsNumber, IsInt,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { TypePrestataire } from '../prestataire.entity';
@@ -32,6 +32,37 @@ export class CreatePrestataireDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @ApiPropertyOptional({ type: [String], example: ['Cardiologie', 'Pédiatrie'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  specialites?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  conventionActive?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  numeroConvention?: string;
+
+  @ApiPropertyOptional({ example: 80 })
+  @IsOptional()
+  @IsInt()
+  tauxConvention?: number;
+
+  @ApiPropertyOptional({ example: 5000 })
+  @IsOptional()
+  @IsInt()
+  tarifConsultation?: number;
+
+  @ApiPropertyOptional({ example: 25000 })
+  @IsOptional()
+  @IsInt()
+  tarifHospitalisation?: number;
 }
 
 export class UpdatePrestataireDto {
@@ -69,4 +100,35 @@ export class UpdatePrestataireDto {
   @IsOptional()
   @IsBoolean()
   estActif?: boolean;
+
+  @ApiPropertyOptional({ type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  specialites?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  conventionActive?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  numeroConvention?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  tauxConvention?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  tarifConsultation?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  tarifHospitalisation?: number;
 }

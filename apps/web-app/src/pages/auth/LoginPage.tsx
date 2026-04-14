@@ -6,6 +6,7 @@ import {
 import { Visibility, VisibilityOff, HealthAndSafety } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/auth.store';
+import axios from 'axios';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -16,25 +17,39 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
 
-  // Connexion dev — bypass auth-service (Phase 2)
-  const loginDev = () => {
-    setAuth(
-      { id: 'dev-001', email: 'admin@sante-ci.ci', nom: 'Admin', prenoms: 'Dev', roles: ['ADMIN'] },
-      'dev-token',
-      'dev-refresh',
-    );
-    navigate('/dashboard', { replace: true });
+  const loginDev = async () => {
+    // Accès rapide dev : utilise le compte admin en base
+    try {
+      const res = await axios.post('http://localhost:3009/api/v1/auth/login', {
+        email: 'admin@sante-ci.ci',
+        password: 'admin123',
+      });
+      const { user, accessToken, refreshToken } = res.data;
+      setAuth({ ...user, roles: user.roles ?? [] }, accessToken, refreshToken);
+      navigate('/dashboard', { replace: true });
+    } catch {
+      // Fallback si le compte n'existe pas encore
+      setAuth(
+        { id: 'dev-001', email: 'admin@sante-ci.ci', nom: 'Admin', prenoms: 'Dev', roles: ['ADMIN'] },
+        'dev-token', 'dev-refresh',
+      );
+      navigate('/dashboard', { replace: true });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email) { setError('Veuillez saisir votre email.'); return; }
     setError(null);
     setLoading(true);
     try {
-      // En Phase 1 : toujours dev bypass
-      loginDev();
-    } catch {
-      setError('Identifiants incorrects.');
+      const res = await axios.post('http://localhost:3009/api/v1/auth/login', { email, password });
+      const { user, accessToken, refreshToken } = res.data;
+      setAuth({ ...user, roles: user.roles ?? [] }, accessToken, refreshToken);
+      navigate('/dashboard', { replace: true });
+    } catch (err: any) {
+      const msg = err.response?.data?.message;
+      setError(Array.isArray(msg) ? msg.join(', ') : (msg ?? 'Identifiants incorrects.'));
     } finally {
       setLoading(false);
     }
@@ -61,7 +76,7 @@ export function LoginPage() {
             <Typography variant="body2" color="text.secondary">
               Système de Gestion d'Assurance Maladie
             </Typography>
-            <Chip label="MODE DEV" color="warning" size="small" sx={{ mt: 1 }} />
+            <Chip label="v1.0" color="default" size="small" sx={{ mt: 1 }} />
           </Box>
 
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
@@ -116,7 +131,7 @@ export function LoginPage() {
             onClick={loginDev}
             sx={{ py: 1.5 }}
           >
-            Accès rapide dev (sans mot de passe)
+            Accès rapide admin (dev)
           </Button>
 
           <Typography variant="caption" color="text.secondary" display="block" textAlign="center" mt={2}>

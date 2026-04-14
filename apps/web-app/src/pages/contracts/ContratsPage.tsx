@@ -4,10 +4,11 @@ import {
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog,
   TextField, MenuItem, CircularProgress, Alert, Tooltip, Stack, Paper,
 } from '@mui/material';
-import { Add, Visibility, Close } from '@mui/icons-material';
+import { Add, Visibility, Close, Download } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { contratsApi, produitsApi } from '../../services/api';
+import { exportCsv } from '../../utils/exportCsv';
 
 const STATUT_COLORS: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
   ACTIF: 'success', SUSPENDU: 'warning', RESILIE: 'error', EN_ATTENTE: 'info',
@@ -103,9 +104,24 @@ export function ContratsPage() {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight={700}>Contrats</Typography>
-        <Button variant="contained" startIcon={<Add />} onClick={() => setOpenCreate(true)} size="large">
-          Nouveau contrat
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button variant="outlined" size="small" startIcon={<Download />}
+            disabled={contrats.length === 0}
+            onClick={() => exportCsv('contrats', contrats, [
+              { key: 'numero', label: 'Numéro' },
+              { key: 'type', label: 'Type' },
+              { key: 'formule', label: 'Formule' },
+              { key: 'statut', label: 'Statut' },
+              { key: 'dateEffet', label: 'Date effet' },
+              { key: 'dateEcheance', label: 'Date échéance' },
+              { key: 'primeMensuelle', label: 'Prime mensuelle' },
+            ])}>
+            CSV
+          </Button>
+          <Button variant="contained" startIcon={<Add />} onClick={() => setOpenCreate(true)} size="large">
+            Nouveau contrat
+          </Button>
+        </Stack>
       </Box>
 
       <Card>

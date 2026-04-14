@@ -216,4 +216,37 @@ export class SinistresService {
       .orderBy('s.score_fraude', 'DESC')
       .getMany();
   }
+
+  async marquerFraude(id: string, params: {
+    scoreFraude: number;
+    niveauSuspicion: string;
+    userId: string;
+  }): Promise<Sinistre> {
+    const sinistre = await this.findById(id);
+    sinistre.statut = 'FRAUDE_SUSPECTEE';
+    sinistre.scoreFraude = params.scoreFraude;
+    sinistre.niveauSuspicion = params.niveauSuspicion;
+    sinistre.updatedBy = params.userId;
+    this.logger.warn(`Sinistre ${sinistre.numero} marqué fraude — score ${params.scoreFraude}`);
+    return this.sinistreRepo.save(sinistre);
+  }
+
+  async cloturerEnqueteFraude(id: string, params: {
+    decision: 'FRAUDE_CONFIRMEE' | 'FRAUDE_INFIRMEE';
+    commentaire?: string;
+    userId: string;
+  }): Promise<Sinistre> {
+    const sinistre = await this.findById(id);
+    if (sinistre.statut !== 'FRAUDE_SUSPECTEE') {
+      throw new BadRequestException('Ce sinistre n\'est pas en cours d\'enquête fraude');
+    }
+    sinistre.statut = params.decision === 'FRAUDE_CONFIRMEE' ? 'REJETE' : 'EN_VERIFICATION';
+    sinistre.motifRejet = params.decision === 'FRAUDE_CONFIRMEE'
+      ? `Fraude confirmée: ${params.commentaire ?? ''}`
+      : undefined!;
+    sinistre.commentairesMedecin = params.commentaire ?? sinistre.commentairesMedecin;
+    sinistre.updatedBy = params.userId;
+    this.logger.log(`Sinistre ${sinistre.numero}: enquête fraude clôturée — ${params.decision}`);
+    return this.sinistreRepo.save(sinistre);
+  }
 }

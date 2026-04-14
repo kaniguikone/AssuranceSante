@@ -6,11 +6,11 @@ import {
   TextField,
 } from '@mui/material';
 import {
-  ArrowBack, PlayArrow, Pause, Cancel, EventNote, PersonAdd, Close,
+  ArrowBack, PlayArrow, Pause, Cancel, EventNote, PersonAdd, Close, History, PictureAsPdf,
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { contratsApi, echeancesApi, echeancesResumeApi, membresApi } from '../../services/api';
+import { contratsApi, echeancesApi, echeancesResumeApi, membresApi, avenantsApi, auditApi } from '../../services/api';
 
 const STATUT_COLORS: Record<string, 'success' | 'warning' | 'error' | 'info' | 'default'> = {
   ACTIF: 'success', SUSPENDU: 'warning', RESILIE: 'error', EN_ATTENTE: 'info',
@@ -54,6 +54,10 @@ export function ContratDetailPage() {
   const [membreError, setMembreError] = useState<string | null>(null);
   const [paiementDialog, setPaiementDialog] = useState<{ id: string; montantDu: number } | null>(null);
   const [paiementForm, setPaiementForm] = useState({ montantPaye: '', transactionId: '' });
+  const [avenantDialog, setAvenantDialog] = useState(false);
+  const [avenantForm, setAvenantForm] = useState({
+    type: 'AUTRE', description: '', dateEffet: '', primeAvant: '', primeApres: '',
+  });
 
   const { data: contrat, isLoading, error, refetch } = useQuery({
     queryKey: ['contrat', id],
@@ -77,6 +81,18 @@ export function ContratDetailPage() {
     queryKey: ['membres-contrat', id],
     queryFn: () => membresApi.list({ contratId: id }).then(r => r.data),
     enabled: !!id && tab === 2,
+  });
+
+  const { data: avenantsData, isLoading: avenantsLoading, refetch: refetchAvenants } = useQuery({
+    queryKey: ['avenants', id],
+    queryFn: () => avenantsApi.byContrat(id!).then(r => r.data),
+    enabled: !!id && tab === 3,
+  });
+
+  const { data: auditData, isLoading: auditLoading } = useQuery({
+    queryKey: ['audit-contrat', id],
+    queryFn: () => auditApi.byRessource('contrat', id!).then(r => r.data),
+    enabled: !!id && tab === 4,
   });
 
   const refresh = () => { refetch(); qc.invalidateQueries({ queryKey: ['contrats'] }); };
@@ -143,8 +159,41 @@ export function ContratDetailPage() {
     },
   });
 
+  const createAvenantMut = useMutation({
+    mutationFn: (d: unknown) => avenantsApi.create(d),
+    onSuccess: () => { refetchAvenants(); setAvenantDialog(false); setAvenantForm({ type: 'AUTRE', description: '', dateEffet: '', primeAvant: '', primeApres: '' }); },
+    onError: (e: any) => setActionError(e.response?.data?.message ?? e.message),
+  });
+
+  const genererPdf = () => {
+    if (!contrat) return;
+    const lines = [
+      `CONTRAT D'ASSURANCE SANTÉ`,
+      ``,
+      `Numéro : ${contrat.numero}`,
+      `Type : ${contrat.type}`,
+      `Formule : ${contrat.formule}`,
+      `Statut : ${contrat.statut}`,
+      `Date d'effet : ${formatDate(contrat.dateEffet)}`,
+      `Date d'échéance : ${formatDate(contrat.dateEcheance)}`,
+      `Prime mensuelle : ${contrat.primeMensuelle ? formatFCFA(Number(contrat.primeMensuelle)) : '—'}`,
+      `Taux remboursement : ${contrat.tauxRemboursement ?? '—'}%`,
+      `Franchise : ${contrat.franchise ? formatFCFA(Number(contrat.franchise)) : '—'}`,
+      `Plafond annuel : ${contrat.plafondAnnuel ? formatFCFA(Number(contrat.plafondAnnuel)) : '—'}`,
+      ``,
+      `Généré le ${new Date().toLocaleDateString('fr-CI')}`,
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `contrat-${contrat.numero}.txt`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const echeancesList: any[] = Array.isArray(echeances) ? echeances : (echeances as any)?.data ?? [];
   const membresList: any[] = Array.isArray(membresContrat) ? membresContrat : (membresContrat as any)?.data ?? [];
+  const avenantsList: any[] = Array.isArray(avenantsData) ? avenantsData : [];
+  const auditList: any[] = Array.isArray(auditData) ? auditData : [];
 
   if (isLoading) return (
     <Box display="flex" justifyContent="center" pt={8}><CircularProgress /></Box>
@@ -217,6 +266,11 @@ export function ContratDetailPage() {
               onClick={() => { setMembreForm(MEMBRE_FORM_INIT); setMembreError(null); setOpenMembre(true); }}>
               + Membre
             </Button>
+            <Button variant="outlined" size="small" startIcon={<PictureAsPdf />}
+              sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.5)' }}
+              onClick={genererPdf}>
+              PDF
+            </Button>
           </Stack>
         </Box>
 
@@ -230,6 +284,8 @@ export function ContratDetailPage() {
           <Tab label="Informations" />
           <Tab label="Échéances" />
           <Tab label="Membres" />
+          <Tab label="Avenants" />
+          <Tab label="Audit" />
         </Tabs>
       </Paper>
 
@@ -360,6 +416,87 @@ export function ContratDetailPage() {
         )
       )}
 
+      {/* Onglet Avenants */}
+      {tab === 3 && (
+        avenantsLoading ? <Box display="flex" justifyContent="center" pt={4}><CircularProgress /></Box> : (
+          <Box>
+            <Box display="flex" justifyContent="flex-end" mb={2}>
+              <Button variant="contained" size="small"
+                onClick={() => { setAvenantForm({ type: 'AUTRE', description: '', dateEffet: '', primeAvant: String(contrat.primeMensuelle ?? 0), primeApres: '' }); setAvenantDialog(true); }}>
+                + Nouvel avenant
+              </Button>
+            </Box>
+            <Paper variant="outlined" sx={{ borderRadius: 2 }}>
+              <TableContainer>
+                <Table>
+                  <TableHead sx={{ bgcolor: 'grey.50' }}>
+                    <TableRow>
+                      {['Numéro', 'Type', 'Date effet', 'Prime avant', 'Prime après', 'Validé', 'État'].map(h =>
+                        <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>)}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {avenantsList.length === 0 ? (
+                      <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                        Aucun avenant pour ce contrat
+                      </TableCell></TableRow>
+                    ) : avenantsList.map((a: any) => (
+                      <TableRow key={a.id} hover>
+                        <TableCell><Typography fontWeight={600} fontFamily="monospace" variant="body2">{a.numero}</Typography></TableCell>
+                        <TableCell><Chip label={a.type.replace(/_/g, ' ')} size="small" /></TableCell>
+                        <TableCell>{formatDate(a.dateEffet)}</TableCell>
+                        <TableCell>{formatFCFA(Number(a.primeAvant))}</TableCell>
+                        <TableCell><Typography fontWeight={600} color="primary.main">{formatFCFA(Number(a.primeApres))}</Typography></TableCell>
+                        <TableCell>{a.valideAt ? formatDate(a.valideAt) : '—'}</TableCell>
+                        <TableCell>
+                          <Chip label={a.valideAt ? 'Validé' : 'En attente'} size="small"
+                            color={a.valideAt ? 'success' : 'warning'} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          </Box>
+        )
+      )}
+
+      {/* Onglet Audit */}
+      {tab === 4 && (
+        auditLoading ? <Box display="flex" justifyContent="center" pt={4}><CircularProgress /></Box> : (
+          <Paper variant="outlined" sx={{ borderRadius: 2 }}>
+            <TableContainer>
+              <Table size="small">
+                <TableHead sx={{ bgcolor: 'grey.50' }}>
+                  <TableRow>
+                    {['Date', 'Action', 'Ressource', 'Statut', 'IP'].map(h =>
+                      <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>)}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {auditList.length === 0 ? (
+                    <TableRow><TableCell colSpan={5} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                      Aucune entrée d'audit pour ce contrat
+                    </TableCell></TableRow>
+                  ) : auditList.map((a: any) => (
+                    <TableRow key={a.id} hover>
+                      <TableCell><Typography variant="caption">{new Date(a.createdAt).toLocaleString('fr-CI')}</Typography></TableCell>
+                      <TableCell><Typography variant="body2" fontWeight={600}>{a.action}</Typography></TableCell>
+                      <TableCell><Typography variant="caption">{a.ressource}</Typography></TableCell>
+                      <TableCell>
+                        <Chip label={a.statut} size="small" color={a.statut === 'SUCCESS' ? 'success' : 'error'} />
+                      </TableCell>
+                      <TableCell><Typography variant="caption" color="text.secondary">{a.ipAddress ?? '—'}</Typography></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
+        )
+      )}
+
       {/* ===== Dialog résiliation ===== */}
       <Dialog open={resilierDialog} onClose={() => setResilierDialog(false)}
         maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
@@ -473,6 +610,50 @@ export function ContratDetailPage() {
               contratId: id,
             })}>
             {createMembreMut.isPending ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Enregistrer'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* ===== Dialog avenant ===== */}
+      <Dialog open={avenantDialog} onClose={() => setAvenantDialog(false)}
+        maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <Box sx={{ px: 3, py: 2.5, bgcolor: 'secondary.main', color: 'white' }}
+          display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h6" fontWeight={700}>Créer un avenant</Typography>
+          <IconButton onClick={() => setAvenantDialog(false)} sx={{ color: 'white' }}><Close /></IconButton>
+        </Box>
+        <DialogContent>
+          <Stack spacing={2} mt={1}>
+            <TextField select label="Type d'avenant *" value={avenantForm.type} size="small" fullWidth
+              onChange={e => setAvenantForm(f => ({ ...f, type: e.target.value }))}>
+              {['CHANGEMENT_FORMULE','AJOUT_BENEFICIAIRE','RETRAIT_BENEFICIAIRE','CHANGEMENT_COORDONNEES','MODIFICATION_FRANCHISE','AUTRE'].map(t =>
+                <option key={t} value={t}>{t.replace(/_/g,' ')}</option>)}
+            </TextField>
+            <TextField label="Description *" multiline rows={3} value={avenantForm.description} size="small" fullWidth
+              onChange={e => setAvenantForm(f => ({ ...f, description: e.target.value }))} />
+            <TextField label="Date d'effet *" type="date" value={avenantForm.dateEffet} size="small" fullWidth
+              onChange={e => setAvenantForm(f => ({ ...f, dateEffet: e.target.value }))}
+              InputLabelProps={{ shrink: true }} />
+            <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2}>
+              <TextField label="Prime avant (FCFA) *" type="number" value={avenantForm.primeAvant} size="small"
+                onChange={e => setAvenantForm(f => ({ ...f, primeAvant: e.target.value }))} />
+              <TextField label="Prime après (FCFA) *" type="number" value={avenantForm.primeApres} size="small"
+                onChange={e => setAvenantForm(f => ({ ...f, primeApres: e.target.value }))} />
+            </Box>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setAvenantDialog(false)}>Annuler</Button>
+          <Button variant="contained" color="secondary"
+            disabled={!avenantForm.description || !avenantForm.dateEffet || !avenantForm.primeApres || createAvenantMut.isPending}
+            onClick={() => createAvenantMut.mutate({
+              contratId: id,
+              type: avenantForm.type,
+              description: avenantForm.description,
+              dateEffet: avenantForm.dateEffet,
+              primeAvant: Number(avenantForm.primeAvant),
+              primeApres: Number(avenantForm.primeApres),
+            })}>
+            {createAvenantMut.isPending ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Créer'}
           </Button>
         </DialogActions>
       </Dialog>

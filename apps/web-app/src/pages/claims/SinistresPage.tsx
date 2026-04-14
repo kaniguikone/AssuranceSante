@@ -4,10 +4,11 @@ import {
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog,
   TextField, MenuItem, CircularProgress, Alert, Tooltip, Stack, Paper,
 } from '@mui/material';
-import { Add, Visibility, Close } from '@mui/icons-material';
+import { Add, Visibility, Close, Download } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { sinistresApi, contratsApi, membresApi } from '../../services/api';
+import { exportCsv } from '../../utils/exportCsv';
 
 const STATUT_COLORS: Record<string, 'default' | 'info' | 'warning' | 'success' | 'error'> = {
   RECU: 'default', EN_VERIFICATION: 'info', EN_VALIDATION_MEDICALE: 'info',
@@ -106,9 +107,24 @@ export function SinistresPage() {
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" fontWeight={700}>Sinistres</Typography>
-        <Button variant="contained" size="large" startIcon={<Add />} onClick={() => setOpenCreate(true)}>
-          Déposer un sinistre
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button variant="outlined" size="small" startIcon={<Download />}
+            disabled={sinistres.length === 0}
+            onClick={() => exportCsv('sinistres', sinistres, [
+              { key: 'numero', label: 'Numéro' },
+              { key: 'typeSoin', label: 'Type soin' },
+              { key: 'dateSoin', label: 'Date soin' },
+              { key: 'montantReclame', label: 'Montant réclamé' },
+              { key: 'montantRembourse', label: 'Montant remboursé' },
+              { key: 'statut', label: 'Statut' },
+              { key: 'scoreFraude', label: 'Score fraude' },
+            ])}>
+            CSV
+          </Button>
+          <Button variant="contained" size="large" startIcon={<Add />} onClick={() => setOpenCreate(true)}>
+            Déposer un sinistre
+          </Button>
+        </Stack>
       </Box>
 
       <Card>

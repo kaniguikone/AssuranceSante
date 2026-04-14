@@ -28,19 +28,21 @@ export class AuthService {
   async login(dto: LoginDto, ipAddress: string, userAgent: string) {
     const user = await this.usersService.findByEmail(dto.email);
 
-    if (!user || !user.estActif) {
+    const invalidCreds = async (msg: string) => {
       await this.auditService.log({
-        action: 'LOGIN_FAILED',
-        ressource: 'auth',
-        ipAddress,
-        statut: 'FAILURE',
-        messageErreur: 'Utilisateur inexistant ou inactif',
+        action: 'LOGIN_FAILED', ressource: 'auth',
+        ipAddress, statut: 'FAILURE', messageErreur: msg,
       });
       throw new UnauthorizedException('Identifiants invalides');
-    }
+    };
 
-    // Note: En production, la validation du mot de passe se fait via Keycloak
-    // Ici on valide le token Keycloak directement
+    if (!user || !user.estActif) return invalidCreds('Utilisateur inexistant ou inactif');
+
+    // Validation du mot de passe (bcrypt)
+    if (!user.passwordHash) return invalidCreds('Aucun mot de passe configuré pour ce compte');
+    const passwordOk = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!passwordOk) return invalidCreds('Mot de passe incorrect');
+
     const tokens = await this.generateTokens(user.id, user.email, user.roles);
 
     // Sauvegarder le refresh token hashé

@@ -2,9 +2,21 @@ import {
   Controller, Get, Post, Patch, Param, Body,
   HttpCode, HttpStatus, ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiProperty } from '@nestjs/swagger';
+import { IsString, IsNumber, IsOptional, IsEnum, Min, Max } from 'class-validator';
 import { SinistresService } from './sinistres.service';
 import { DeposerSinistreDto, LiquiderSinistreDto, RejeterSinistreDto } from './dto/deposer-sinistre.dto';
+
+class MarquerFraudeDto {
+  @ApiProperty({ minimum: 0, maximum: 100 }) @IsNumber() @Min(0) @Max(100) scoreFraude: number;
+  @ApiProperty({ example: 'ELEVE' }) @IsString() niveauSuspicion: string;
+}
+
+class CloturerFraudeDto {
+  @ApiProperty({ enum: ['FRAUDE_CONFIRMEE', 'FRAUDE_INFIRMEE'] })
+  @IsEnum(['FRAUDE_CONFIRMEE', 'FRAUDE_INFIRMEE']) decision: 'FRAUDE_CONFIRMEE' | 'FRAUDE_INFIRMEE';
+  @ApiProperty({ required: false }) @IsOptional() @IsString() commentaire?: string;
+}
 
 const DEV_USER_ID = 'system-dev';
 
@@ -73,5 +85,23 @@ export class SinistresController {
     @Body() dto: LiquiderSinistreDto,
   ) {
     return this.sinistresService.liquider(id, { ...dto, userId: DEV_USER_ID });
+  }
+
+  @Patch(':id/fraude/marquer')
+  @ApiOperation({ summary: 'Marquer un sinistre comme fraude suspectée' })
+  marquerFraude(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MarquerFraudeDto,
+  ) {
+    return this.sinistresService.marquerFraude(id, { ...dto, userId: DEV_USER_ID });
+  }
+
+  @Patch(':id/fraude/cloturer')
+  @ApiOperation({ summary: 'Clôturer une enquête fraude (confirmer ou infirmer)' })
+  cloturerFraude(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CloturerFraudeDto,
+  ) {
+    return this.sinistresService.cloturerEnqueteFraude(id, { ...dto, userId: DEV_USER_ID });
   }
 }

@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { randomUUID } from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { User } from './user.entity';
 import { UserRoleEntity } from '../roles/user-role.entity';
 import { CreateUserDto, UpdateUserDto } from './dto/manage-user.dto';
@@ -39,12 +40,15 @@ export class UsersService {
     const existing = await this.findByEmail(dto.email);
     if (existing) throw new BadRequestException('Email déjà utilisé');
 
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+
     const user = this.userRepo.create({
       keycloakId: randomUUID(),
       email: dto.email,
       nom: dto.nom,
       prenoms: dto.prenoms,
       telephone: dto.telephone,
+      passwordHash,
       createdBy,
     });
     const saved = await this.userRepo.save(user);
@@ -63,13 +67,20 @@ export class UsersService {
     const user = await this.findById(id);
     if (!user) throw new NotFoundException(`Utilisateur ${id} introuvable`);
 
-    const { roles, ...fields } = dto;
+    const { roles, password, ...fields } = dto;
+    if (password) {
+      (fields as any).passwordHash = await bcrypt.hash(password, 10);
+    }
     if (Object.keys(fields).length) {
       await this.userRepo.update(id, fields);
     }
 
     if (roles !== undefined) {
-      await this.roleRepo.update({ userId: id, revokedAt: null as any }, { revokedAt: new Date() });
+      await this.roleRepo.createQueryBuilder()
+        .update()
+        .set({ revokedAt: new Date() })
+        .where('user_id = :userId AND revoked_at IS NULL', { userId: id })
+        .execute();
       if (roles.length) {
         const roleEntities = roles.map(role =>
           this.roleRepo.create({ userId: id, role, grantedBy: updatedBy }),

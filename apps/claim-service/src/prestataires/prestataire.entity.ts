@@ -35,6 +35,24 @@ export class Prestataire {
   @Column({ type: 'varchar', nullable: true })
   email: string | null;
 
+  @Column({ type: 'text', array: true, default: [] })
+  specialites: string[];
+
+  @Column({ name: 'convention_active', default: false })
+  conventionActive: boolean;
+
+  @Column({ name: 'numero_convention', type: 'varchar', nullable: true })
+  numeroConvention: string | null;
+
+  @Column({ name: 'taux_convention', type: 'smallint', nullable: true })
+  tauxConvention: number | null;
+
+  @Column({ name: 'tarif_consultation', type: 'int', nullable: true })
+  tarifConsultation: number | null;
+
+  @Column({ name: 'tarif_hospitalisation', type: 'int', nullable: true })
+  tarifHospitalisation: number | null;
+
   @Column({ name: 'est_actif', default: true })
   estActif: boolean;
 

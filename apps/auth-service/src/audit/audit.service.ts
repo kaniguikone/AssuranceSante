@@ -23,6 +23,18 @@ export class AuditService {
     private readonly auditRepo: Repository<AuditLog>,
   ) {}
 
+  findByRessource(ressource: string, ressourceId: string): Promise<AuditLog[]> {
+    return this.auditRepo.find({
+      where: { ressource, ressourceId },
+      order: { createdAt: 'DESC' },
+      take: 50,
+    });
+  }
+
+  findAll(limit = 100): Promise<AuditLog[]> {
+    return this.auditRepo.find({ order: { createdAt: 'DESC' }, take: limit });
+  }
+
   async log(params: LogParams): Promise<void> {
     const log = this.auditRepo.create({
       userId: params.userId,

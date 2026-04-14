@@ -5,6 +5,8 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { AuditModule } from './audit/audit.module';
+import { PermissionsModule } from './permissions/permissions.module';
+import { MenuPermission } from './permissions/menu-permission.entity';
 import { appConfig, databaseConfig, jwtConfig } from './config';
 import { User } from './users/user.entity';
 import { UserRoleEntity } from './roles/user-role.entity';
@@ -28,7 +30,7 @@ import { RefreshToken } from './auth/refresh-token.entity';
         username: config.get('database.username'),
         password: config.get('database.password'),
         database: config.get('database.name'),
-        entities: [User, UserRoleEntity, AuditLog, RefreshToken],
+        entities: [User, UserRoleEntity, AuditLog, RefreshToken, MenuPermission],
         synchronize: config.get('app.env') === 'development',
         logging: config.get('app.env') === 'development',
         ssl: config.get('app.env') === 'production' ? { rejectUnauthorized: false } : false,
@@ -44,6 +46,7 @@ import { RefreshToken } from './auth/refresh-token.entity';
     AuthModule,
     UsersModule,
     AuditModule,
+    PermissionsModule,
   ],
 })
 export class AppModule {}

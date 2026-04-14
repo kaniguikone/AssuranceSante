@@ -1,9 +1,8 @@
 import {
   Controller, Get, Post, Patch, Delete, Param, Body,
-  HttpCode, HttpStatus, ParseUUIDPipe, Req,
+  HttpCode, HttpStatus, ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import type { Request } from 'express';
 import { Public } from '../common/decorators/public.decorator';
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto } from './dto/manage-user.dto';

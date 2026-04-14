@@ -9,16 +9,26 @@ interface User {
   roles: string[];
 }
 
+export interface MenuPermission {
+  menuPath: string;
+  menuLabel: string;
+  allowedRoles: string[];
+  sortOrder: number;
+}
+
 interface AuthState {
   user: User | null;
   accessToken: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
+  menuPermissions: MenuPermission[];
   setAuth: (user: User, accessToken: string, refreshToken: string) => void;
   setAccessToken: (token: string) => void;
+  setMenuPermissions: (perms: MenuPermission[]) => void;
   logout: () => void;
   hasRole: (role: string) => boolean;
   hasAnyRole: (roles: string[]) => boolean;
+  canAccessMenu: (path: string) => boolean;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -28,11 +38,14 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
+      menuPermissions: [],
 
       setAuth: (user, accessToken, refreshToken) =>
         set({ user, accessToken, refreshToken, isAuthenticated: true }),
 
       setAccessToken: (token) => set({ accessToken: token }),
+
+      setMenuPermissions: (perms) => set({ menuPermissions: perms }),
 
       logout: () =>
         set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false }),
@@ -41,6 +54,14 @@ export const useAuthStore = create<AuthState>()(
 
       hasAnyRole: (roles) =>
         roles.some((r) => get().user?.roles.includes(r)) ?? false,
+
+      canAccessMenu: (path) => {
+        const { menuPermissions, user } = get();
+        const perm = menuPermissions.find(p => p.menuPath === path);
+        if (!perm) return true; // non configuré = accessible
+        if (perm.allowedRoles.length === 0) return true; // vide = tous
+        return (user?.roles ?? []).some(r => perm.allowedRoles.includes(r));
+      },
     }),
     {
       name: 'sante-ci-auth',
@@ -48,6 +69,7 @@ export const useAuthStore = create<AuthState>()(
         user: state.user,
         refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
+        menuPermissions: state.menuPermissions,
       }),
     },
   ),

@@ -1,5 +1,5 @@
 import {
-  IsEmail, IsString, IsOptional, IsBoolean, IsArray, IsEnum,
+  IsEmail, IsString, IsOptional, IsBoolean, IsArray, IsEnum, MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -29,6 +29,11 @@ export class CreateUserDto {
   @IsString()
   telephone?: string;
 
+  @ApiProperty({ example: 'MotDePasse123!' })
+  @IsString()
+  @MinLength(6)
+  password: string;
+
   @ApiPropertyOptional({ enum: UserRole, isArray: true, example: [UserRole.GESTIONNAIRE] })
   @IsOptional()
   @IsArray()
@@ -56,6 +61,12 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   estActif?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  password?: string;
 
   @ApiPropertyOptional({ enum: UserRole, isArray: true })
   @IsOptional()

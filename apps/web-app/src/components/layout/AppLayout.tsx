@@ -8,6 +8,7 @@ import {
   Dashboard, Description, People, LocalHospital,
   MedicalServices, SupervisedUserCircle, Inventory2,
   Notifications, Menu as MenuIcon, AccountCircle, ExitToApp,
+  Calculate, GppBad, AdminPanelSettings,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuthStore } from '../../stores/auth.store';
@@ -22,6 +23,9 @@ const NAV_ITEMS = [
   { label: 'Prestataires', icon: <MedicalServices />, path: '/prestataires', roles: [] },
   { label: 'Produits', icon: <Inventory2 />, path: '/produits', roles: [] },
   { label: 'Utilisateurs', icon: <SupervisedUserCircle />, path: '/utilisateurs', roles: [] },
+  { label: 'Simulateur de prime', icon: <Calculate />, path: '/simulateur', roles: [] },
+  { label: 'Gestion fraudes', icon: <GppBad />, path: '/fraude', roles: [] },
+  { label: 'Gestion des accès', icon: <AdminPanelSettings />, path: '/permissions', roles: [] },
 ];
 
 export function AppLayout() {
@@ -29,7 +33,7 @@ export function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
-  const { user, logout, hasAnyRole } = useAuthStore();
+  const { user, logout, canAccessMenu } = useAuthStore();
 
   const handleLogout = () => {
     logout();
@@ -48,7 +52,7 @@ export function AppLayout() {
 
       {/* Navigation */}
       <List sx={{ flex: 1, pt: 1 }}>
-        {NAV_ITEMS.filter(item => item.roles.length === 0 || hasAnyRole(item.roles)).map((item) => (
+        {NAV_ITEMS.filter(item => canAccessMenu(item.path)).map((item) => (
           <ListItem key={item.path} disablePadding>
             <ListItemButton
               selected={location.pathname.startsWith(item.path)}

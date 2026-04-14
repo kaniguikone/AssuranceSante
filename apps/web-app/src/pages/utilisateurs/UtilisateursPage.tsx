@@ -18,14 +18,14 @@ function formatDate(d: string) {
   return d ? new Date(d).toLocaleDateString('fr-CI') : '—';
 }
 
-const CREATE_INIT = { nom: '', prenoms: '', email: '', telephone: '', roles: ['GESTIONNAIRE'] as string[] };
+const CREATE_INIT = { nom: '', prenoms: '', email: '', telephone: '', password: '', roles: ['GESTIONNAIRE'] as string[] };
 
 export function UtilisateursPage() {
   const qc = useQueryClient();
   const [openCreate, setOpenCreate] = useState(false);
   const [openEdit, setOpenEdit] = useState<any>(null);
   const [form, setForm] = useState(CREATE_INIT);
-  const [editForm, setEditForm] = useState({ nom: '', prenoms: '', telephone: '', roles: [] as string[] });
+  const [editForm, setEditForm] = useState({ nom: '', prenoms: '', telephone: '', roles: [] as string[], newPassword: '' });
   const [formError, setFormError] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
@@ -73,12 +73,20 @@ export function UtilisateursPage() {
       setFormError('Nom, prénoms et email sont obligatoires');
       return;
     }
+    if (!form.password || form.password.length < 6) {
+      setFormError('Le mot de passe doit contenir au moins 6 caractères');
+      return;
+    }
     createMut.mutate({ ...form, telephone: form.telephone || undefined });
   };
 
+  // Le getter TypeScript n'est pas sérialisé en JSON → on lit userRoles directement
+  const getRoles = (u: any): string[] =>
+    [...new Set((u.userRoles ?? []).filter((r: any) => !r.revokedAt).map((r: any) => r.role))] as string[];
+
   const handleEdit = (u: any) => {
     setOpenEdit(u);
-    setEditForm({ nom: u.nom, prenoms: u.prenoms, telephone: u.telephone ?? '', roles: u.roles ?? [] });
+    setEditForm({ nom: u.nom, prenoms: u.prenoms, telephone: u.telephone ?? '', roles: getRoles(u), newPassword: '' });
     setFormError(null);
   };
 
@@ -131,9 +139,9 @@ export function UtilisateursPage() {
                   <TableCell>{u.telephone ?? '—'}</TableCell>
                   <TableCell>
                     <Stack direction="row" spacing={0.5} flexWrap="wrap">
-                      {(u.roles ?? []).length === 0 ? (
+                      {getRoles(u).length === 0 ? (
                         <Typography variant="caption" color="text.secondary">Aucun rôle</Typography>
-                      ) : (u.roles ?? []).map((r: string) => (
+                      ) : getRoles(u).map((r: string) => (
                         <Chip key={r} label={r} size="small" color={ROLE_COLORS[r] ?? 'default'} />
                       ))}
                     </Stack>
@@ -184,6 +192,9 @@ export function UtilisateursPage() {
               onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
             <TextField label="Téléphone" value={form.telephone} fullWidth size="small"
               onChange={e => setForm(f => ({ ...f, telephone: e.target.value }))} />
+            <TextField label="Mot de passe *" type="password" value={form.password} fullWidth size="small"
+              onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+              helperText="Minimum 6 caractères" />
             <TextField select label="Rôle" value={form.roles[0] ?? ''} fullWidth size="small"
               onChange={e => setForm(f => ({ ...f, roles: [e.target.value] }))}>
               {ROLES.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
@@ -221,12 +232,20 @@ export function UtilisateursPage() {
               onChange={e => setEditForm(f => ({ ...f, roles: [e.target.value] }))}>
               {ROLES.map(r => <MenuItem key={r} value={r}>{r}</MenuItem>)}
             </TextField>
+            <TextField label="Nouveau mot de passe" type="password" value={editForm.newPassword} fullWidth size="small"
+              onChange={e => setEditForm(f => ({ ...f, newPassword: e.target.value }))}
+              helperText="Laisser vide pour ne pas changer" />
           </Stack>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5 }}>
           <Button onClick={() => setOpenEdit(null)}>Annuler</Button>
           <Button variant="contained" disabled={updateMut.isPending}
-            onClick={() => updateMut.mutate({ id: openEdit.id, data: { ...editForm, telephone: editForm.telephone || undefined } })}
+            onClick={() => {
+              const { newPassword, ...rest } = editForm;
+              const payload: any = { ...rest, telephone: rest.telephone || undefined };
+              if (newPassword && newPassword.length >= 6) payload.password = newPassword;
+              updateMut.mutate({ id: openEdit.id, data: payload });
+            }}
             sx={{ minWidth: 140 }}>
             {updateMut.isPending ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Enregistrer'}
           </Button>

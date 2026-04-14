@@ -24,6 +24,9 @@ export class User {
   @Column({ nullable: true })
   telephone: string;
 
+  @Column({ name: 'password_hash', nullable: true })
+  passwordHash: string;
+
   @Column({ name: 'est_actif', default: true })
   estActif: boolean;
 

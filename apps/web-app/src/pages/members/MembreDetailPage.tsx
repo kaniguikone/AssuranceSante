@@ -6,7 +6,7 @@ import {
 import { ArrowBack, OpenInNew } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { membresApi, sinistresApi } from '../../services/api';
+import { membresApi, sinistresApi, notifsApi } from '../../services/api';
 
 function formatDate(d: string) {
   return d ? new Date(d).toLocaleDateString('fr-CI') : '—';
@@ -47,7 +47,14 @@ export function MembreDetailPage() {
     enabled: !!id && tab === 1,
   });
 
+  const { data: notifsData, isLoading: notifsLoading } = useQuery({
+    queryKey: ['notifs-membre', id],
+    queryFn: () => notifsApi.byDestinataire(id!).then(r => r.data),
+    enabled: !!id && tab === 2,
+  });
+
   const sinistres: any[] = Array.isArray(sinistresData) ? sinistresData : [];
+  const notifs: any[] = Array.isArray(notifsData) ? notifsData : [];
 
   if (isLoading) return (
     <Box display="flex" justifyContent="center" pt={8}><CircularProgress /></Box>
@@ -91,6 +98,7 @@ export function MembreDetailPage() {
         <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ px: 3, borderBottom: 1, borderColor: 'divider' }}>
           <Tab label="Informations" />
           <Tab label="Sinistres" />
+          <Tab label="Notifications" />
         </Tabs>
       </Paper>
 
@@ -183,6 +191,36 @@ export function MembreDetailPage() {
               </Table>
             </TableContainer>
           </Paper>
+        )
+      )}
+      {/* Onglet Notifications */}
+      {tab === 2 && (
+        notifsLoading ? (
+          <Box display="flex" justifyContent="center" pt={4}><CircularProgress /></Box>
+        ) : (
+          <Box display="flex" flexDirection="column" gap={2}>
+            {notifs.length === 0 ? (
+              <Alert severity="info">Aucune notification pour ce membre</Alert>
+            ) : notifs.map((n: any) => (
+              <Paper key={n.id} variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+                <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={0.5}>
+                  <Typography variant="subtitle2" fontWeight={700}>{n.sujet ?? n.type ?? 'Notification'}</Typography>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Chip label={n.canal ?? 'SMS'} size="small" variant="outlined" />
+                    <Typography variant="caption" color="text.secondary">
+                      {n.createdAt ? new Date(n.createdAt).toLocaleString('fr-CI') : ''}
+                    </Typography>
+                  </Box>
+                </Box>
+                <Typography variant="body2" color="text.secondary">{n.message ?? n.contenu ?? '—'}</Typography>
+                {n.statut && (
+                  <Box mt={1}>
+                    <Chip label={n.statut} size="small" color={n.statut === 'ENVOYE' ? 'success' : 'default'} />
+                  </Box>
+                )}
+              </Paper>
+            ))}
+          </Box>
         )
       )}
     </Box>

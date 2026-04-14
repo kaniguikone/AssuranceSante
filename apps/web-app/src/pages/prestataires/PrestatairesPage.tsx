@@ -3,9 +3,9 @@ import {
   Box, Typography, Button, Card, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Chip, IconButton, Dialog,
   TextField, MenuItem, CircularProgress, Alert, Tooltip, Stack,
-  DialogContent, DialogActions,
+  DialogContent, DialogActions, Paper, Switch, FormControlLabel,
 } from '@mui/material';
-import { Add, Edit, Close, LocalHospital } from '@mui/icons-material';
+import { Add, Edit, Close, LocalHospital, Visibility, CheckCircle } from '@mui/icons-material';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { prestatairesApi } from '../../services/api';
 
@@ -16,11 +16,20 @@ const TYPE_COLORS: Record<string, 'error' | 'warning' | 'success' | 'info' | 'de
   LABORATOIRE: 'info', OPTICIEN: 'default', CABINET_MEDICAL: 'default', AUTRE: 'default',
 };
 
-const FORM_INIT = { nom: '', type: 'CLINIQUE', adresse: '', ville: '', telephone: '', email: '' };
+const FORM_INIT = {
+  nom: '', type: 'CLINIQUE', adresse: '', ville: '', telephone: '', email: '',
+  specialites: '', conventionActive: false, numeroConvention: '', tauxConvention: '',
+  tarifConsultation: '', tarifHospitalisation: '',
+};
+
+function formatFCFA(n: number) {
+  return new Intl.NumberFormat('fr-CI', { style: 'currency', currency: 'XOF', maximumFractionDigits: 0 }).format(n);
+}
 
 export function PrestatairesPage() {
   const qc = useQueryClient();
   const [openDialog, setOpenDialog] = useState(false);
+  const [detailDialog, setDetailDialog] = useState<any | null>(null);
   const [editing, setEditing] = useState<any>(null);
   const [form, setForm] = useState(FORM_INIT);
   const [formError, setFormError] = useState<string | null>(null);
@@ -35,7 +44,17 @@ export function PrestatairesPage() {
   const openCreate = () => { setEditing(null); setForm(FORM_INIT); setFormError(null); setOpenDialog(true); };
   const openEdit = (p: any) => {
     setEditing(p);
-    setForm({ nom: p.nom, type: p.type, adresse: p.adresse ?? '', ville: p.ville ?? '', telephone: p.telephone ?? '', email: p.email ?? '' });
+    setForm({
+      nom: p.nom, type: p.type,
+      adresse: p.adresse ?? '', ville: p.ville ?? '',
+      telephone: p.telephone ?? '', email: p.email ?? '',
+      specialites: (p.specialites ?? []).join(', '),
+      conventionActive: p.conventionActive ?? false,
+      numeroConvention: p.numeroConvention ?? '',
+      tauxConvention: p.tauxConvention ? String(p.tauxConvention) : '',
+      tarifConsultation: p.tarifConsultation ? String(p.tarifConsultation) : '',
+      tarifHospitalisation: p.tarifHospitalisation ? String(p.tarifHospitalisation) : '',
+    });
     setFormError(null);
     setOpenDialog(true);
   };
@@ -54,11 +73,22 @@ export function PrestatairesPage() {
 
   const handleSave = () => {
     if (!form.nom) { setFormError('Le nom est obligatoire'); return; }
-    const payload: any = { nom: form.nom, type: form.type };
+    const specialitesList = form.specialites
+      ? form.specialites.split(',').map((s: string) => s.trim()).filter(Boolean)
+      : [];
+    const payload: any = {
+      nom: form.nom, type: form.type,
+      specialites: specialitesList,
+      conventionActive: form.conventionActive,
+    };
     if (form.adresse) payload.adresse = form.adresse;
     if (form.ville) payload.ville = form.ville;
     if (form.telephone) payload.telephone = form.telephone;
     if (form.email) payload.email = form.email;
+    if (form.numeroConvention) payload.numeroConvention = form.numeroConvention;
+    if (form.tauxConvention) payload.tauxConvention = Number(form.tauxConvention);
+    if (form.tarifConsultation) payload.tarifConsultation = Number(form.tarifConsultation);
+    if (form.tarifHospitalisation) payload.tarifHospitalisation = Number(form.tarifHospitalisation);
     saveMut.mutate(payload);
   };
 
@@ -83,16 +113,16 @@ export function PrestatairesPage() {
           <Table>
             <TableHead sx={{ bgcolor: 'grey.50' }}>
               <TableRow>
-                {['Nom', 'Type', 'Ville', 'Téléphone', 'Email', 'Statut', ''].map(h => (
+                {['Nom', 'Type', 'Ville', 'Spécialités', 'Convention', 'Tarif consult.', 'Statut', ''].map(h => (
                   <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>
                 ))}
               </TableRow>
             </TableHead>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4 }}><CircularProgress /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4 }}><CircularProgress /></TableCell></TableRow>
               ) : prestataires.length === 0 ? (
-                <TableRow><TableCell colSpan={7} align="center" sx={{ py: 4, color: 'text.secondary' }}>
+                <TableRow><TableCell colSpan={8} align="center" sx={{ py: 4, color: 'text.secondary' }}>
                   Aucun prestataire — cliquez "Nouveau prestataire" pour commencer
                 </TableCell></TableRow>
               ) : prestataires.map((p: any) => (
@@ -108,16 +138,41 @@ export function PrestatairesPage() {
                       color={TYPE_COLORS[p.type] ?? 'default'} variant="outlined" />
                   </TableCell>
                   <TableCell>{p.ville ?? '—'}</TableCell>
-                  <TableCell>{p.telephone ?? '—'}</TableCell>
-                  <TableCell>{p.email ?? '—'}</TableCell>
+                  <TableCell>
+                    {p.specialites?.length > 0
+                      ? <Box display="flex" gap={0.5} flexWrap="wrap">
+                          {p.specialites.slice(0, 2).map((s: string) => (
+                            <Chip key={s} label={s} size="small" variant="outlined" />
+                          ))}
+                          {p.specialites.length > 2 && (
+                            <Chip label={`+${p.specialites.length - 2}`} size="small" />
+                          )}
+                        </Box>
+                      : <Typography variant="caption" color="text.secondary">—</Typography>}
+                  </TableCell>
+                  <TableCell>
+                    {p.conventionActive
+                      ? <Chip icon={<CheckCircle />} label={`${p.tauxConvention ?? '?'}%`} size="small" color="success" />
+                      : <Typography variant="caption" color="text.secondary">Non</Typography>}
+                  </TableCell>
+                  <TableCell>
+                    {p.tarifConsultation ? formatFCFA(p.tarifConsultation) : '—'}
+                  </TableCell>
                   <TableCell>
                     <Chip label={p.estActif ? 'Actif' : 'Inactif'} size="small"
                       color={p.estActif ? 'success' : 'default'} />
                   </TableCell>
                   <TableCell align="right">
-                    <Tooltip title="Modifier">
-                      <IconButton size="small" onClick={() => openEdit(p)}><Edit fontSize="small" /></IconButton>
-                    </Tooltip>
+                    <Stack direction="row" spacing={0.5}>
+                      <Tooltip title="Voir détail">
+                        <IconButton size="small" onClick={() => setDetailDialog(p)}>
+                          <Visibility fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Modifier">
+                        <IconButton size="small" onClick={() => openEdit(p)}><Edit fontSize="small" /></IconButton>
+                      </Tooltip>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))}
@@ -126,7 +181,83 @@ export function PrestatairesPage() {
         </TableContainer>
       </Card>
 
-      {/* Dialog création / édition */}
+      {/* ===== Dialog détail ===== */}
+      <Dialog open={!!detailDialog} onClose={() => setDetailDialog(null)}
+        maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        {detailDialog && (
+          <>
+            <Box sx={{ px: 4, py: 3, bgcolor: 'primary.main', color: 'white' }}
+              display="flex" justifyContent="space-between" alignItems="center">
+              <Box>
+                <Typography variant="h6" fontWeight={700}>{detailDialog.nom}</Typography>
+                <Chip label={detailDialog.type?.replace(/_/g, ' ')} size="small"
+                  sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: 'white', mt: 0.5 }} />
+              </Box>
+              <IconButton onClick={() => setDetailDialog(null)} sx={{ color: 'white' }}><Close /></IconButton>
+            </Box>
+            <DialogContent>
+              <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2} mt={1}>
+                {[
+                  ['Adresse', detailDialog.adresse ?? '—'],
+                  ['Ville', detailDialog.ville ?? '—'],
+                  ['Téléphone', detailDialog.telephone ?? '—'],
+                  ['Email', detailDialog.email ?? '—'],
+                ].map(([label, val]) => (
+                  <Paper key={label} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                    <Typography variant="caption" color="text.secondary" display="block">{label}</Typography>
+                    <Typography variant="body2" fontWeight={600}>{val}</Typography>
+                  </Paper>
+                ))}
+              </Box>
+
+              {detailDialog.specialites?.length > 0 && (
+                <Box mt={2}>
+                  <Typography variant="overline" color="primary" fontWeight={700} display="block" mb={1}>Spécialités</Typography>
+                  <Box display="flex" gap={1} flexWrap="wrap">
+                    {detailDialog.specialites.map((s: string) => (
+                      <Chip key={s} label={s} variant="outlined" />
+                    ))}
+                  </Box>
+                </Box>
+              )}
+
+              {detailDialog.conventionActive && (
+                <Box mt={2}>
+                  <Typography variant="overline" color="success.main" fontWeight={700} display="block" mb={1}>Convention active</Typography>
+                  <Box display="grid" gridTemplateColumns="1fr 1fr 1fr" gap={2}>
+                    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                      <Typography variant="caption" color="text.secondary" display="block">N° convention</Typography>
+                      <Typography variant="body2" fontWeight={600}>{detailDialog.numeroConvention ?? '—'}</Typography>
+                    </Paper>
+                    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                      <Typography variant="caption" color="text.secondary" display="block">Taux prise en charge</Typography>
+                      <Typography variant="body2" fontWeight={700} color="success.main">{detailDialog.tauxConvention ?? '—'}%</Typography>
+                    </Paper>
+                    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                      <Typography variant="caption" color="text.secondary" display="block">Tarif consultation</Typography>
+                      <Typography variant="body2" fontWeight={600}>{detailDialog.tarifConsultation ? formatFCFA(detailDialog.tarifConsultation) : '—'}</Typography>
+                    </Paper>
+                  </Box>
+                  {detailDialog.tarifHospitalisation && (
+                    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, mt: 1 }}>
+                      <Typography variant="caption" color="text.secondary" display="block">Tarif hospitalisation / jour</Typography>
+                      <Typography variant="body2" fontWeight={600}>{formatFCFA(detailDialog.tarifHospitalisation)}</Typography>
+                    </Paper>
+                  )}
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions sx={{ px: 3, pb: 2 }}>
+              <Button onClick={() => { openEdit(detailDialog); setDetailDialog(null); }} startIcon={<Edit />}>
+                Modifier
+              </Button>
+              <Button variant="contained" onClick={() => setDetailDialog(null)}>Fermer</Button>
+            </DialogActions>
+          </>
+        )}
+      </Dialog>
+
+      {/* ===== Dialog création / édition ===== */}
       <Dialog open={openDialog} onClose={closeDialog}
         maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3, overflow: 'hidden' } }}>
         <Box sx={{ px: 4, py: 3, bgcolor: 'primary.main', color: 'white' }}
@@ -156,6 +287,24 @@ export function PrestatairesPage() {
               <TextField label="Email" value={form.email} size="small"
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
             </Box>
+            <TextField label="Spécialités (séparées par virgule)" value={form.specialites} size="small" fullWidth
+              onChange={e => setForm(f => ({ ...f, specialites: e.target.value }))}
+              placeholder="Cardiologie, Pédiatrie, Chirurgie…" />
+            <FormControlLabel
+              control={<Switch checked={form.conventionActive}
+                onChange={e => setForm(f => ({ ...f, conventionActive: e.target.checked }))} />}
+              label="Convention active avec SANTÉ-CI" />
+            {form.conventionActive && (
+              <Box display="grid" gridTemplateColumns="1fr 1fr 1fr" gap={2}>
+                <TextField label="N° convention" value={form.numeroConvention} size="small"
+                  onChange={e => setForm(f => ({ ...f, numeroConvention: e.target.value }))} />
+                <TextField label="Taux (%)" type="number" value={form.tauxConvention} size="small"
+                  onChange={e => setForm(f => ({ ...f, tauxConvention: e.target.value }))}
+                  inputProps={{ min: 0, max: 100 }} />
+                <TextField label="Tarif consultation (FCFA)" type="number" value={form.tarifConsultation} size="small"
+                  onChange={e => setForm(f => ({ ...f, tarifConsultation: e.target.value }))} />
+              </Box>
+            )}
           </Stack>
         </DialogContent>
 

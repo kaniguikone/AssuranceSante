@@ -4,10 +4,11 @@ import {
   TableHead, TableRow, Chip, IconButton, CircularProgress, Alert,
   Tooltip, TextField, MenuItem, InputAdornment, Stack, Button,
 } from '@mui/material';
-import { Visibility, Search, FilterAlt, Clear } from '@mui/icons-material';
+import { Visibility, Search, FilterAlt, Clear, Download } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { membresApi } from '../../services/api';
+import { exportCsv } from '../../utils/exportCsv';
 
 const STATUT_COLORS: Record<string, 'success' | 'warning' | 'error' | 'default'> = {
   ACTIF: 'success', SUSPENDU: 'warning', RADIE: 'error', EN_ATTENTE: 'default',
@@ -54,9 +55,20 @@ export function MembresPage() {
             </Typography>
           )}
         </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-          Les membres sont créés via la fiche contrat
-        </Typography>
+        <Button size="small" startIcon={<Download />} variant="outlined"
+          disabled={membres.length === 0}
+          onClick={() => exportCsv('membres', membres, [
+            { key: 'numeroCarte', label: 'N° Carte' },
+            { key: 'nom', label: 'Nom' },
+            { key: 'prenoms', label: 'Prénoms' },
+            { key: 'telephone', label: 'Téléphone' },
+            { key: 'email', label: 'Email' },
+            { key: 'statut', label: 'Statut' },
+            { key: 'lienParente', label: 'Lien parenté' },
+            { key: 'dateAffiliation', label: 'Date affiliation' },
+          ])}>
+          Exporter CSV
+        </Button>
       </Box>
 
       {/* Filtres */}

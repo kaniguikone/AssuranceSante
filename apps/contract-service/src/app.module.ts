@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { ContractsModule } from './contracts/contracts.module';
 import { ProduitsModule } from './produits/produits.module';
+import { AvenantsModule } from './avenants/avenants.module';
 import { Contrat } from './contracts/contrat.entity';
 import { Avenant } from './avenants/avenant.entity';
 import { Produit } from './produits/produit.entity';
@@ -36,6 +37,7 @@ import { Produit } from './produits/produit.entity';
     }),
     ContractsModule,
     ProduitsModule,
+    AvenantsModule,
   ],
 })
 export class AppModule {}

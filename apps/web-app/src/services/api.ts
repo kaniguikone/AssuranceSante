@@ -102,6 +102,40 @@ export const sinistresApi = {
   liquider:  (id: string, data: unknown) => claimClient.patch(`/sinistres/${id}/liquider`, data),
 };
 
+// ── Avenants ──────────────────────────────────────────────────────────────────
+export const avenantsApi = {
+  byContrat: (contratId: string) => contractClient.get(`/avenants/contrat/${contratId}`),
+  get:       (id: string) => contractClient.get(`/avenants/${id}`),
+  create:    (data: unknown) => contractClient.post('/avenants', data),
+  valider:   (id: string, data: unknown) => contractClient.patch(`/avenants/${id}/valider`, data),
+};
+
+// ── Simulateur de prime ───────────────────────────────────────────────────────
+export const simulateurApi = {
+  simuler: (data: { formule: string; dateNaissance: string; nbBeneficiaires?: number }) =>
+    billingClient.post('/baremes/simuler', data),
+};
+
+// ── Permissions menu ─────────────────────────────────────────────────────────
+export const permissionsApi = {
+  getAll:    () => authClient.get('/permissions'),
+  updateAll: (data: { menuPath: string; allowedRoles: string[] }[]) => authClient.put('/permissions', data),
+};
+
+// ── Audit trail ───────────────────────────────────────────────────────────────
+export const auditApi = {
+  byRessource: (ressource: string, id: string) => authClient.get(`/audit/${ressource}/${id}`),
+  all:         (limit?: number) => authClient.get('/audit', { params: { limit } }),
+};
+
+// ── Fraude ────────────────────────────────────────────────────────────────────
+export const fraudeApi = {
+  marquer:   (id: string, data: { scoreFraude: number; niveauSuspicion: string }) =>
+    claimClient.patch(`/sinistres/${id}/fraude/marquer`, data),
+  cloturer:  (id: string, data: { decision: string; commentaire?: string }) =>
+    claimClient.patch(`/sinistres/${id}/fraude/cloturer`, data),
+};
+
 // ── Notifications ─────────────────────────────────────────────────────────────
 export const notifsApi = {
   envoyer:         (data: unknown) => notifClient.post('/notifications', data),

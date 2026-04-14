@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import {
   Box, Typography, Button, Chip, CircularProgress, Alert,
   Paper, Stack, IconButton, Dialog, DialogContent, DialogActions,
-  TextField,
+  TextField, MenuItem, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  LinearProgress,
 } from '@mui/material';
-import { ArrowBack, CheckCircle, Cancel, AccountBalance, Close, OpenInNew } from '@mui/icons-material';
+import { ArrowBack, CheckCircle, Cancel, AccountBalance, Close, OpenInNew, GppBad, History } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { sinistresApi } from '../../services/api';
+import { sinistresApi, auditApi, fraudeApi } from '../../services/api';
 
 const STATUT_COLORS: Record<string, 'default' | 'info' | 'warning' | 'success' | 'error'> = {
   RECU: 'default', EN_VERIFICATION: 'info', EN_VALIDATION_MEDICALE: 'info',
@@ -40,10 +41,13 @@ export function SinistreDetailPage() {
 
   const [rejetDialog, setRejetDialog] = useState(false);
   const [liquidDialog, setLiquidDialog] = useState(false);
+  const [fraudeDialog, setFraudeDialog] = useState(false);
+  const [auditVisible, setAuditVisible] = useState(false);
   const [motifRejet, setMotifRejet] = useState('');
   const [liquidForm, setLiquidForm] = useState({
     franchise: 2000, tauxRemboursement: 70, plafondAnnuelRestant: 500000, commentairesMedecin: '',
   });
+  const [fraudeForm, setFraudeForm] = useState({ scoreFraude: 70, niveauSuspicion: 'ELEVE' });
 
   const { data: sinistre, isLoading, error, refetch } = useQuery({
     queryKey: ['sinistre', id],
@@ -67,6 +71,18 @@ export function SinistreDetailPage() {
     mutationFn: (data: unknown) => sinistresApi.liquider(id!, data),
     onSuccess: () => { refresh(); setLiquidDialog(false); },
   });
+
+  const fraudeMut = useMutation({
+    mutationFn: () => fraudeApi.marquer(id!, fraudeForm),
+    onSuccess: () => { refresh(); setFraudeDialog(false); },
+  });
+
+  const { data: auditData, isLoading: auditLoading } = useQuery({
+    queryKey: ['audit-sinistre', id],
+    queryFn: () => auditApi.byRessource('sinistre', id!).then(r => r.data),
+    enabled: !!id && auditVisible,
+  });
+  const auditList: any[] = Array.isArray(auditData) ? auditData : [];
 
   if (isLoading) return (
     <Box display="flex" justifyContent="center" pt={8}><CircularProgress /></Box>
@@ -122,6 +138,18 @@ export function SinistreDetailPage() {
                 Rejeter
               </Button>
             )}
+            {!['FRAUDE_SUSPECTEE', 'REJETE', 'PAYE'].includes(sinistre.statut) && (
+              <Button variant="outlined" size="small" startIcon={<GppBad />}
+                sx={{ color: '#ffcdd2', borderColor: 'rgba(255,205,210,0.5)' }}
+                onClick={() => setFraudeDialog(true)}>
+                Fraude
+              </Button>
+            )}
+            <Button variant="outlined" size="small" startIcon={<History />}
+              sx={{ color: 'white', borderColor: 'rgba(255,255,255,0.4)' }}
+              onClick={() => setAuditVisible(v => !v)}>
+              Audit
+            </Button>
           </Stack>
         </Box>
       </Paper>
@@ -232,7 +260,79 @@ export function SinistreDetailPage() {
             <Typography variant="body2">{sinistre.commentairesMedecin}</Typography>
           </Paper>
         )}
+
+        {/* Score fraude */}
+        {sinistre.scoreFraude != null && (
+          <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, borderColor: 'error.light', gridColumn: { md: '1 / -1' } }}>
+            <Typography variant="overline" color="error" fontWeight={700} display="block" mb={2}>Analyse fraude</Typography>
+            <Box display="flex" alignItems="center" gap={2}>
+              <Box sx={{ flex: 1 }}>
+                <LinearProgress variant="determinate" value={sinistre.scoreFraude} color="error" sx={{ height: 10, borderRadius: 5 }} />
+              </Box>
+              <Typography fontWeight={700} color="error.main">{sinistre.scoreFraude}/100</Typography>
+              {sinistre.niveauSuspicion && <Chip label={sinistre.niveauSuspicion} color="error" size="small" />}
+            </Box>
+          </Paper>
+        )}
+
+        {/* Journal d'audit */}
+        {auditVisible && (
+          <Paper variant="outlined" sx={{ p: 3, borderRadius: 2, gridColumn: { md: '1 / -1' } }}>
+            <Typography variant="overline" color="primary" fontWeight={700} display="block" mb={2}>Journal d'audit</Typography>
+            {auditLoading ? <CircularProgress size={24} /> : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead sx={{ bgcolor: 'grey.50' }}>
+                    <TableRow>
+                      {['Date', 'Action', 'Statut', 'IP'].map(h => <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>)}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {auditList.length === 0 ? (
+                      <TableRow><TableCell colSpan={4} align="center" sx={{ py: 3, color: 'text.secondary' }}>Aucune entrée d'audit</TableCell></TableRow>
+                    ) : auditList.map((a: any) => (
+                      <TableRow key={a.id}>
+                        <TableCell><Typography variant="caption">{new Date(a.createdAt).toLocaleString('fr-CI')}</Typography></TableCell>
+                        <TableCell><Typography variant="body2" fontWeight={600}>{a.action}</Typography></TableCell>
+                        <TableCell><Chip label={a.statut} size="small" color={a.statut === 'SUCCESS' ? 'success' : 'error'} /></TableCell>
+                        <TableCell><Typography variant="caption" color="text.secondary">{a.ipAddress ?? '—'}</Typography></TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        )}
       </Box>
+
+      {/* ===== Dialog fraude ===== */}
+      <Dialog open={fraudeDialog} onClose={() => setFraudeDialog(false)} maxWidth="xs" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <Box sx={{ px: 3, py: 2.5, bgcolor: 'error.main', color: 'white' }}
+          display="flex" justifyContent="space-between" alignItems="center">
+          <Typography variant="h6" fontWeight={700}>Signaler fraude suspectée</Typography>
+          <IconButton onClick={() => setFraudeDialog(false)} sx={{ color: 'white' }}><Close /></IconButton>
+        </Box>
+        <DialogContent>
+          <Stack spacing={2.5} mt={1}>
+            <TextField label="Score de fraude (0–100)" type="number" size="small" fullWidth
+              value={fraudeForm.scoreFraude}
+              onChange={e => setFraudeForm(f => ({ ...f, scoreFraude: Math.min(100, Math.max(0, Number(e.target.value))) }))}
+              inputProps={{ min: 0, max: 100 }} />
+            <TextField select label="Niveau de suspicion" size="small" fullWidth
+              value={fraudeForm.niveauSuspicion}
+              onChange={e => setFraudeForm(f => ({ ...f, niveauSuspicion: e.target.value }))}>
+              {['FAIBLE', 'MODERE', 'ELEVE', 'CRITIQUE'].map(n => <MenuItem key={n} value={n}>{n}</MenuItem>)}
+            </TextField>
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2.5 }}>
+          <Button onClick={() => setFraudeDialog(false)}>Annuler</Button>
+          <Button variant="contained" color="error" disabled={fraudeMut.isPending} onClick={() => fraudeMut.mutate()}>
+            {fraudeMut.isPending ? <CircularProgress size={20} sx={{ color: 'white' }} /> : 'Signaler'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* ===== Dialog rejet ===== */}
       <Dialog open={rejetDialog} onClose={() => setRejetDialog(false)}
